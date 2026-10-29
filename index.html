@@ -1,0 +1,62 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HealthMate AI</title>
+<style>
+:root{--bg:#f6faf8;--fg:#14251f;--card:#fff;--ac:#0b7a5a;--bd:#cfe0d9}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1a16;--fg:#e8f3ee;--card:#17251f;--ac:#3ecf9f;--bd:#2c4339}}
+body{margin:0;font:18px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+#sos{background:#b3261e;color:#fff;padding:8px 12px;font-weight:600;display:flex;justify-content:space-between;position:sticky;top:0}
+nav{display:flex;gap:6px;overflow-x:auto;padding:10px}nav button{flex:none}
+main{max-width:760px;margin:auto;padding:0 12px 40px}
+button{font:inherit;padding:10px 16px;border-radius:10px;border:1px solid var(--ac);background:var(--card);color:var(--fg);cursor:pointer}
+button.on,button.go{background:var(--ac);color:#fff}
+input,select{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg);width:100%;box-sizing:border-box}
+label{display:block;margin:8px 0 2px;font-size:15px}.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:10px 0}
+.me{text-align:right}.bad{border-color:#b3261e;color:#b3261e}dt{font-weight:600;text-transform:capitalize}dd{margin:0 0 6px 12px}small{opacity:.7}
+</style></head><body>
+<div id="sos"><span id="sost"></span><button id="lg" style="padding:2px 10px">हिं/EN</button></div><nav id="nav"></nav><main id="m"></main>
+<script>
+const T={en:{chat:"Assistant",profile:"Profile",diet:"Diet",ex:"Exercise",care:"Find care",risk:"Risk check",band:"Band",account:"Account",history:"History",rem:"Reminders",del:"Delete my data",sos:"Emergency: 112 · Ambulance: 108",ask:"Ask a health question",send:"Send",go:"Generate"},
+hi:{chat:"सहायक",profile:"प्रोफ़ाइल",diet:"आहार",ex:"व्यायाम",care:"नज़दीकी सेवा",risk:"जोखिम जाँच",band:"बैंड",account:"खाता",history:"इतिहास",rem:"रिमाइंडर",del:"मेरा डेटा हटाएँ",sos:"आपातकाल: 112 · एम्बुलेंस: 108",ask:"स्वास्थ्य प्रश्न पूछें",send:"भेजें",go:"बनाएँ"}};
+let L=localStorage.lang||"en",tab="chat";const $=i=>document.getElementById(i),t=k=>T[L][k];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=o=>Array.isArray(o)?"<ul>"+o.map(x=>"<li>"+fmt(x)+"</li>").join("")+"</ul>":o&&typeof o=="object"?"<dl>"+Object.entries(o).map(([k,v])=>`<dt>${esc(k.replace(/_/g," "))}</dt><dd>${fmt(v)}</dd>`).join("")+"</dl>":esc(o);
+const prof=()=>JSON.parse(localStorage.p||'{"age":30,"sex":"male","height_cm":170,"weight_kg":70,"activity":"light","goal":"maintain","veg":true,"conditions":[]}');
+const COND=["diabetes","kidney","heart","pregnancy","eating_disorder"];
+async function api(u,o){try{const r=await fetch(u,{...o,headers:{...(o&&o.headers),...(localStorage.tk?{Authorization:"Bearer "+localStorage.tk}:{})}});const j=await r.json().catch(()=>null);if(r.status==401&&localStorage.tk){delete localStorage.tk;delete localStorage.em}if(!r.ok)return{error:j&&typeof j.detail=="string"?j.detail:"Request failed ("+r.status+"). "+(j&&Array.isArray(j.detail)?j.detail.map(d=>(d.loc||[]).slice(1).join(".")+": "+d.msg).join("; "):"")};return j}catch(e){return{error:"Cannot reach the server ("+e+"). If the site was idle, wait a minute and retry."}}}
+const save=(k,d)=>localStorage.tk&&api("/api/history",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:k,data:d})});
+async function saveProf(b){localStorage.p=JSON.stringify(readProf());if(localStorage.tk)await api("/api/me/profile",{method:"PUT",headers:{"Content-Type":"application/json"},body:localStorage.p});b.textContent="Saved ✓"}
+async function logout(){await api("/api/logout",{method:"POST"});delete localStorage.tk;delete localStorage.em;nav();view()}
+function acct(){const m=$("m");if(localStorage.tk){m.innerHTML=`<div class=card>Signed in as ${esc(localStorage.em)}<p><button onclick="logout()">Log out</button></p><small>Your profile and history are saved to your account. "Delete my data" removes the account and everything stored.</small></div>`;return}
+m.innerHTML=`<div class=card>${field("em","Email","","email")}${field("pw","Password (8+ characters)","","password")}<label><input type=checkbox id=cs style="width:auto"> I consent to my profile and history being stored to provide this service. I can delete everything at any time.</label><p><button class=go onclick="auth('login')">Log in</button> <button onclick="auth('register')">Register</button></p><div id=out></div></div>`}
+async function auth(k){const r=await post("/api/"+k,{email:$("em").value,password:$("pw").value,consent:$("cs").checked});if(r.token){localStorage.tk=r.token;localStorage.em=$("em").value;const p=await api("/api/me/profile");if(p.profile)localStorage.p=JSON.stringify(p.profile);tab="chat";nav();view()}else out(esc(r.error||"Failed"))}
+async function hist(){$("m").innerHTML='<div id=out class=card></div>';if(!localStorage.tk){out("Log in (Account tab) to save and see your history.");return}const r=await api("/api/history");out(r.error?esc(r.error):(r.items.length?r.items.map(i=>`<p><b>${esc(i.kind)}</b> <small>${new Date(i.created*1000).toLocaleString()}</small>${fmt(i.data)}</p>`).join(""):"Nothing saved yet."))}
+const post=(u,b)=>api(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});
+const out=h=>$("out").innerHTML=h;
+function nav(){$("sost").textContent=t("sos");$("nav").innerHTML=["chat","profile","diet","ex","care","risk","band","rem","account","history"].map(k=>`<button class="${k==tab?"on":""}" onclick="tab='${k}';nav();view()">${t(k)}</button>`).join("")+`<button onclick="del()">${t("del")}</button>`}
+async function del(){if(localStorage.tk){if(!confirm("Delete your account and all saved data?"))return;await api("/api/me",{method:"DELETE"})}localStorage.clear();L="en";nav();view()}
+$("lg").onclick=()=>{L=L=="en"?"hi":"en";localStorage.lang=L;nav();view()};
+function field(id,label,v,type="number"){return `<label>${label}</label><input id="${id}" type="${type}" value="${v}">`}
+function sel(id,label,opts,v){return `<label>${label}</label><select id="${id}">${opts.map(o=>`<option ${o==v?"selected":""}>${o}</option>`).join("")}</select>`}
+function readProf(){const p=prof();return{age:+$("age").value,sex:$("sex").value,height_cm:+$("h").value,weight_kg:+$("w").value,activity:$("act").value,goal:$("goal").value,veg:$("veg").value=="veg",conditions:COND.filter(c=>$("c_"+c).checked)}}
+function view(){const m=$("m"),p=prof();
+if(tab=="chat"){m.innerHTML=`<div id="log"></div><input id="q" placeholder="${t("ask")}"><p><button class="go" onclick="sendQ()">${t("send")}</button></p><small>Educational information only. Not a diagnosis.</small>`;$("q").onkeydown=e=>e.key=="Enter"&&sendQ()}
+else if(tab=="profile"){m.innerHTML=`<div class="card">${field("age","Age",p.age)}${sel("sex","Sex",["male","female"],p.sex)}${field("h","Height (cm)",p.height_cm)}${field("w","Weight (kg)",p.weight_kg)}${sel("act","Activity",["sedentary","light","moderate","active"],p.activity)}${sel("goal","Goal",["lose","maintain","gain"],p.goal)}${sel("veg","Diet",["veg","non-veg"],p.veg?"veg":"non-veg")}<label>Health conditions (we will refer you to a doctor)</label>${COND.map(c=>`<label><input type="checkbox" id="c_${c}" style="width:auto" ${p.conditions.includes(c)?"checked":""}> ${c.replace("_"," ")}</label>`).join("")}<p><button class="go" onclick="saveProf(this)">Save</button></p></div>`}
+else if(tab=="diet"){m.innerHTML=`<button class="go" onclick="run('/api/diet-plan',prof())">${t("go")}</button><div id="out" class="card"></div>`}
+else if(tab=="ex"){m.innerHTML=`${sel("lvl","Level",["beginner","intermediate"],"beginner")}${sel("dy","Days per week",[2,3,4,5,6],4)}<p><button class="go" onclick="run('/api/exercise-plan?level='+$('lvl').value+'&days='+$('dy').value,prof())">${t("go")}</button></p><div id="out" class="card"></div>`}
+else if(tab=="care"){m.innerHTML=`<button class="go" onclick="care()">${t("care")} 📍</button><div id="out" class="card"></div><small>Location is used for this search only and is not stored.</small>`}
+else if(tab=="risk"){m.innerHTML=`<div class="card">${field("ra","Age",p.age)}${sel("rs","Sex",["male","female"],p.sex)}${field("rw","Waist (cm)",90)}${sel("rx","Regular exercise",["regular","some","none"],"some")}${sel("rf","Parents with diabetes",[0,1,2],0)}<p><button class="go" onclick="risk()">${t("go")}</button></p></div><div id="out" class="card"></div>`}
+else if(tab=="rem"){rem()}
+else if(tab=="account"){acct()}
+else if(tab=="history"){hist()}
+else{m.innerHTML=`${sel("sc","Simulated band scenario",["normal","concerning"],"normal")}<p><button class="go" onclick="bandRun()">${t("go")}</button></p><div id="out" class="card"></div>`}}
+async function sendQ(){const q=$("q").value.trim();if(!q)return;$("q").value="";const l=$("log");l.insertAdjacentHTML("beforeend",`<div class="card me">${esc(q)}</div>`);const r=await post("/api/chat",{message:q});if(r.answer)save("chat",{question:q,answer:r.answer});
+l.insertAdjacentHTML("beforeend",`<div class="card ${r.emergency?"bad":""}"><b>${esc(r.answer||r.error)}</b>${(r.sources||[]).map(s=>`<br><small><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></small>`).join("")}</div>`)}
+async function run(u,b){out("…");const r=await post(u,b);if(!r.error&&r.plan!==null)save(u.includes("diet")?"diet":"exercise",r);out(fmt(r.error?r.error:r.message?r.message:r))}
+async function risk(){const r=await post("/api/risk-screen",{age:+$("ra").value,sex:$("rs").value,waist_cm:+$("rw").value,activity:$("rx").value,family:+$("rf").value});if(!r.error)save("risk",r);out(fmt(r.error||r))}
+async function bandRun(){const r=await api("/api/band?scenario="+$("sc").value);out(r.error||fmt(r.flags)+"<small>"+esc(r.advice)+" (simulated data)</small><hr>"+"<div style='overflow-x:auto'><table cellpadding=4><tr><th>Day<th>HR<th>Steps<th>Sleep<th>SpO₂</tr>"+r.days.map(d=>`<tr><td>${d.day}<td>${d.resting_hr}<td>${d.steps}<td>${d.sleep_h}<td>${d.spo2}</tr>`).join("")+"</table></div>")}
+function care(){out("Locating…");navigator.geolocation?navigator.geolocation.getCurrentPosition(async pos=>{const{latitude:a,longitude:b}=pos.coords;const r=await api(`/api/nearby?lat=${a}&lon=${b}`);out((r.places&&r.places.length?"":"<p>No facilities found nearby, or the map service is busy. Try again in a minute. Emergency: 112.</p>")+(r.places||[]).map(x=>`<p><b>${esc(x.name)}</b> (${esc(x.type)}) · ${x.km} km ${x.phone?`· <a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>`:""}<br><a href="https://www.google.com/maps/dir/?api=1&destination=${x.lat},${x.lon}" target="_blank" rel="noopener">Directions</a></p>`).join("")+`<small>${esc(r.note||r.error||"")}</small>`)},()=>out("Location denied. Please search manually or call 112 in an emergency.")):out("Location not supported.")}
+function rem(){const l=JSON.parse(localStorage.r||"[]");$("m").innerHTML=`<div class=card>${field("rn","Medicine / task (only what your doctor prescribed)","","text")}${field("rt","Time","09:00","time")}<p><button class=go onclick="addRem()">Add</button> <button onclick="window.Notification&&Notification.requestPermission()">Allow notifications</button></p><small>Reminders ring while this page is open. Stored on this device only.</small>${l.map((x,i)=>`<p>⏰ ${esc(x.t)} — ${esc(x.n)} <button onclick="delRem(${i})">✕</button></p>`).join("")}</div>`}
+function addRem(){const n=$("rn").value.trim();if(!n)return;const l=JSON.parse(localStorage.r||"[]");l.push({n,t:$("rt").value});localStorage.r=JSON.stringify(l);rem()}
+function delRem(i){const l=JSON.parse(localStorage.r||"[]");l.splice(i,1);localStorage.r=JSON.stringify(l);rem()}
+const fired=new Set();setInterval(()=>{const d=new Date(),hm=d.toTimeString().slice(0,5);JSON.parse(localStorage.r||"[]").forEach(x=>{const k=d.toDateString()+hm+x.n;if(x.t==hm&&!fired.has(k)){fired.add(k);const m="Reminder: "+x.n;window.Notification&&Notification.permission=="granted"?new Notification("HealthMate",{body:m}):alert(m)}})},15000);
+nav();view();
+</script></body></html>
